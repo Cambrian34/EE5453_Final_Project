@@ -37,6 +37,10 @@ __global__ void conv_weight_grad_kernel(float *input, float *d_out, float *d_wei
 __global__ void update_weights_kernel(float *weights, float *d_weights, float *bias, float *d_bias,
                                       int size, int out_nodes, float lr, int batch_size);
 
+__global__ void adam_update_weights_kernel(float *weights, float *d_weights, float *bias, float *d_bias,
+                                           float *m_weights, float *v_weights, float *m_bias, float *v_bias,
+                                           int size, int out_nodes, float lr, float beta1, float beta2, float epsilon, int t, int batch_size);
+
 __global__ void fc_backward_kernel(float *d_out, float *weights, float *d_in, float *input,
                                    int batch_size, int in_nodes, int out_nodes, bool apply_relu);
 

@@ -244,6 +244,61 @@ __global__ void update_weights_kernel(float *weights, float *d_weights, float *b
     }
 }
 
+// ADAM Weight Update Kernel
+__global__ void adam_update_weights_kernel(float *weights, float *d_weights, float *bias, float *d_bias,
+                                           float *m_weights, float *v_weights, float *m_bias, float *v_bias,
+                                           int size, int out_nodes, float lr, float beta1, float beta2, float epsilon, int t, int batch_size)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // Bias-correction terms
+    float bias_correction1 = 1.0f - powf(beta1, (float)t);
+    float bias_correction2 = 1.0f - powf(beta2, (float)t);
+    float lr_corrected = lr * sqrtf(bias_correction2) / bias_correction1;
+    
+    // Weight update with ADAM
+    if (idx < size)
+    {
+        float grad = d_weights[idx] / (float)batch_size;
+        
+        // Update biased first moment estimate (mean)
+        m_weights[idx] = beta1 * m_weights[idx] + (1.0f - beta1) * grad;
+        
+        // Update biased second moment estimate (variance)
+        v_weights[idx] = beta2 * v_weights[idx] + (1.0f - beta2) * grad * grad;
+        
+        // Bias-corrected first and second moment estimates
+        float m_hat = m_weights[idx] / bias_correction1;
+        float v_hat = v_weights[idx] / bias_correction2;
+        
+        // Update weight
+        weights[idx] -= lr * m_hat / (sqrtf(v_hat) + epsilon);
+        
+        d_weights[idx] = 0.0f; // Reset for next batch
+    }
+    
+    // Bias update with ADAM
+    if (idx < out_nodes)
+    {
+        float b_grad = d_bias[idx] / (float)batch_size;
+        
+        // Update biased first moment estimate (mean)
+        m_bias[idx] = beta1 * m_bias[idx] + (1.0f - beta1) * b_grad;
+        
+        // Update biased second moment estimate (variance)
+        v_bias[idx] = beta2 * v_bias[idx] + (1.0f - beta2) * b_grad * b_grad;
+        
+        // Bias-corrected first and second moment estimates
+        float m_hat = m_bias[idx] / bias_correction1;
+        float v_hat = v_bias[idx] / bias_correction2;
+        
+        // Update bias
+        bias[idx] -= lr * m_hat / (sqrtf(v_hat) + epsilon);
+        
+        d_bias[idx] = 0.0f;
+    }
+}
+
 // Conv Weight Gradient Kernel
 __global__ void conv_weight_grad_kernel(float *input, float *d_out, float *d_weights,
                                         int batch_size, int in_w, int in_h, int in_c,
