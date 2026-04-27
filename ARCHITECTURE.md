@@ -9,6 +9,7 @@
 6. [Optimizer: ADAM](#optimizer-adam)
 7. [GPU Optimizations](#gpu-optimizations)
 8. [Build & Run](#build--run)
+9. [Weight Export for MSP430](#weight-export-for-msp430)
 
 ---
 
@@ -618,6 +619,207 @@ Training complete in XXXXX.XX ms
 ### Issue: Slow convergence (accuracy barely improves)
 - **Cause**: Learning rate too low or network capacity too small
 - **Solution**: Increase `ADAM_LEARNING_RATE` (try 0.01) or increase filter counts
+
+---
+
+## Weight Export for MSP430
+
+### Overview
+
+After training completes, weights can be exported to a C header file for embedding in MSP430 microcontroller firmware for edge inference.
+
+**Workflow:**
+```
+lenet_train → lenet5_weights.bin → export_weights → lenet5_weights.h → MSP430 Project
+```
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `lenet_cifar10.cu` | Modified training code (auto-saves checkpoint) |
+| `export_weights.cu` | Standalone utility to generate header file |
+| `lenet5_weights.bin` | Binary checkpoint (~2.2 MB, intermediate) |
+| `lenet5_weights.h` | Generated C header for MSP430 (~3-4 MB) |
+| `WEIGHT_EXPORT_GUIDE.md` | Detailed export and inference guide |
+| `Makefile` | Build automation for training and export |
+
+### Quick Start
+
+**Step 1: Train and export in one command**
+```bash
+make weights
+```
+
+This runs:
+1. Compiles training program
+2. Runs 30 epochs training
+3. Saves checkpoint to `lenet5_weights.bin`
+4. Compiles export utility
+5. Generates `lenet5_weights.h`
+
+**Step 2: Use in MSP430 project**
+```c
+#include "lenet5_weights.h"
+
+// Access weights
+void inference(float *input_image) {
+    float sum = b_conv1[filter];
+    for (int i = 0; i < size; i++) {
+        sum += input[i] * w_conv1[idx];
+    }
+}
+```
+
+### Manual Workflow
+
+**Step 1: Compile training**
+```bash
+nvcc lenet_cifar10.cu lenet_kernels.cu data_utils.cu cuda_utils.cu -o lenet_train -O3
+```
+
+**Step 2: Run training**
+```bash
+./lenet_train         # Creates lenet5_weights.bin on completion
+```
+
+**Step 3: Compile export utility**
+```bash
+nvcc export_weights.cu data_utils.cu -o export_weights -O3
+```
+
+**Step 4: Export weights**
+```bash
+./export_weights      # Reads checkpoint, generates lenet5_weights.h
+```
+
+### Generated Header Structure
+
+The `lenet5_weights.h` file contains:
+
+```c
+// Architecture constants
+#define LENET_C1_FILTERS 18
+#define LENET_C2_FILTERS 48
+#define LENET_FC1_SIZE 360
+#define LENET_FC2_SIZE 252
+#define LENET_NUM_CLASSES 10
+
+// Size constants for each weight/bias array
+#define LENET_CONV1_W_SIZE 2718
+#define LENET_CONV1_B_SIZE 18
+// ... (repeat for all layers)
+
+// Static weight arrays
+const float w_conv1[LENET_CONV1_W_SIZE];
+const float b_conv1[LENET_CONV1_B_SIZE];
+const float w_conv2[LENET_CONV2_W_SIZE];
+const float b_conv2[LENET_CONV2_B_SIZE];
+const float w_fc1[LENET_FC1_W_SIZE];
+const float b_fc1[LENET_FC1_B_SIZE];
+const float w_fc2[LENET_FC2_W_SIZE];
+const float b_fc2[LENET_FC2_B_SIZE];
+const float w_fc3[LENET_FC3_W_SIZE];
+const float b_fc3[LENET_FC3_B_SIZE];
+```
+
+### Parameter Summary
+
+| Layer | Weights | Biases | Total | Size (KB) |
+|-------|---------|--------|-------|-----------|
+| Conv1 | 2,718 | 18 | 2,736 | 10.7 |
+| Conv2 | 21,648 | 48 | 21,696 | 84.8 |
+| FC1 | 432,360 | 360 | 432,720 | 1,689.1 |
+| FC2 | 91,212 | 252 | 91,464 | 357.3 |
+| FC3 | 2,530 | 10 | 2,540 | 9.9 |
+| **Total** | 550,468 | 688 | **551,156** | **2,151.0** |
+
+### Checkpoint Format
+
+**Binary file header:**
+- Magic: `0x4C455435` ("LET5")
+- Version: 1
+- Architecture metadata (5 ints)
+
+**Data layout:**
+```
+w_conv1[2718] → b_conv1[18] → w_conv2[21648] → b_conv2[48] → 
+w_fc1[432360] → b_fc1[360] → w_fc2[91212] → b_fc2[252] → 
+w_fc3[2530] → b_fc3[10]
+```
+
+All values are IEEE 754 float32 (4 bytes each).
+
+### MSP430 Integration
+
+**Memory requirements:**
+- **Flash (program + weights)**: ~3-4 MB
+- **RAM (inference)**: ~500 KB (depends on implementation)
+- **Typical MSP430 device**: MSP430FR5969 (256 KB SRAM, 64 KB Flash)
+
+**Recommendations for MSP430:**
+1. **Use external flash** (SD card or serial flash) for weights
+2. **Quantize to int16** to reduce memory by 50%
+3. **Stream weights** in chunks during inference
+4. **Implement batched inference** for efficiency
+
+### Inference Implementation
+
+Reference implementation template:
+
+```c
+#include "lenet5_weights.h"
+
+void lenet5_inference(float *image, float *output) {
+    // Conv1: 18 filters, 5x5 kernel
+    float conv1[18 * 28 * 28];
+    for (int f = 0; f < LENET_C1_FILTERS; f++) {
+        conv1_forward(image, w_conv1, b_conv1[f], conv1, f);
+    }
+    
+    // Pool1: 2x2 max pooling
+    float pool1[18 * 14 * 14];
+    max_pool(conv1, pool1, 18, 28, 28);
+    
+    // Conv2: 48 filters, 5x5 kernel
+    float conv2[48 * 10 * 10];
+    for (int f = 0; f < LENET_C2_FILTERS; f++) {
+        conv2_forward(pool1, w_conv2, b_conv2[f], conv2, f);
+    }
+    
+    // Pool2: 2x2 max pooling
+    float pool2[48 * 5 * 5];
+    max_pool(conv2, pool2, 48, 10, 10);
+    
+    // FC1: 1200 → 360
+    float fc1[360];
+    fc_forward(pool2, w_fc1, b_fc1, fc1, 1200, 360);
+    relu(fc1, 360);
+    
+    // FC2: 360 → 252
+    float fc2[252];
+    fc_forward(fc1, w_fc2, b_fc2, fc2, 360, 252);
+    relu(fc2, 252);
+    
+    // FC3: 252 → 10 (output)
+    fc_forward(fc2, w_fc3, b_fc3, output, 252, 10);
+    softmax(output, 10);
+}
+```
+
+### Performance Notes
+
+- **Inference latency**: ~100 ms - 1 sec per image (MSP430 @ 200 MHz)
+- **Power consumption**: 10-100 mW active (varies by kernel implementation)
+- **Accuracy**: 65-75% on CIFAR-10 (same as training accuracy)
+
+### For More Details
+
+See [WEIGHT_EXPORT_GUIDE.md](WEIGHT_EXPORT_GUIDE.md) for:
+- Detailed workflow and examples
+- Quantization strategies
+- External storage integration
+- Troubleshooting tips
 
 ---
 

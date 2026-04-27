@@ -8,6 +8,17 @@
 
 void init_weights_xavier(float *w, int size, int fan_in, int fan_out);
 
+// Save trained weights to binary checkpoint file
+void save_weights_checkpoint(
+    const char *filename,
+    float *h_w_c1, float *h_b_c1,
+    float *h_w_c2, float *h_b_c2,
+    float *h_w_fc1, float *h_b_fc1,
+    float *h_w_fc2, float *h_b_fc2,
+    float *h_w_fc3, float *h_b_fc3,
+    int conv1_w_size, int conv2_w_size,
+    int fc1_w_size, int fc2_w_size, int fc3_w_size);
+
 int main()
 {
     FILE *output_file = fopen("output.txt", "w");
@@ -745,6 +756,21 @@ int main()
     cudaFree(m_b_fc3);
     cudaFree(v_b_fc3);
 
+    // Save trained weights to binary checkpoint before cleanup
+    fprintf(stdout, "\nSaving trained weights to checkpoint file...\n");
+    fprintf(output_file, "\nSaving trained weights to checkpoint file...\n");
+    save_weights_checkpoint(
+        "lenet5_weights.bin",
+        h_w_c1, h_b_c1,
+        h_w_c2, h_b_c2,
+        h_w_fc1, h_b_fc1,
+        h_w_fc2, h_b_fc2,
+        h_w_fc3, h_b_fc3,
+        conv1_w_size, conv2_w_size,
+        fc1_w_size, fc2_w_size, fc3_w_size);
+    fprintf(stdout, "Weights saved to lenet5_weights.bin\n");
+    fprintf(output_file, "Weights saved to lenet5_weights.bin\n");
+
     // Cleanup Host Memory
     free(h_batch_images);
     free(h_batch_labels);
@@ -766,4 +792,67 @@ int main()
 
     fclose(output_file);
     return 0;
+}
+
+// Implementation of save_weights_checkpoint
+void save_weights_checkpoint(
+    const char *filename,
+    float *h_w_c1, float *h_b_c1,
+    float *h_w_c2, float *h_b_c2,
+    float *h_w_fc1, float *h_b_fc1,
+    float *h_w_fc2, float *h_b_fc2,
+    float *h_w_fc3, float *h_b_fc3,
+    int conv1_w_size, int conv2_w_size,
+    int fc1_w_size, int fc2_w_size, int fc3_w_size) {
+    
+    FILE *file = fopen(filename, "wb");
+    if (file == NULL) {
+        fprintf(stderr, "Error: Could not open %s for writing\n", filename);
+        return;
+    }
+
+    // Write metadata header
+    int magic = 0x4C455435;  // "LET5" in hex
+    int version = 1;
+    fwrite(&magic, sizeof(int), 1, file);
+    fwrite(&version, sizeof(int), 1, file);
+
+    // Write layer dimensions
+    int c1_filters = C1_FILTERS;
+    int c2_filters = C2_FILTERS;
+    int fc1_size = FC1_SIZE;
+    int fc2_size = FC2_SIZE;
+    int num_classes = NUM_CLASSES;
+    
+    fwrite(&c1_filters, sizeof(int), 1, file);
+    fwrite(&c2_filters, sizeof(int), 1, file);
+    fwrite(&fc1_size, sizeof(int), 1, file);
+    fwrite(&fc2_size, sizeof(int), 1, file);
+    fwrite(&num_classes, sizeof(int), 1, file);
+
+    // Write Conv1 weights and biases
+    fwrite(h_w_c1, sizeof(float), conv1_w_size, file);
+    fwrite(h_b_c1, sizeof(float), c1_filters, file);
+
+    // Write Conv2 weights and biases
+    fwrite(h_w_c2, sizeof(float), conv2_w_size, file);
+    fwrite(h_b_c2, sizeof(float), c2_filters, file);
+
+    // Write FC1 weights and biases
+    fwrite(h_w_fc1, sizeof(float), fc1_w_size, file);
+    fwrite(h_b_fc1, sizeof(float), fc1_size, file);
+
+    // Write FC2 weights and biases
+    fwrite(h_w_fc2, sizeof(float), fc2_w_size, file);
+    fwrite(h_b_fc2, sizeof(float), fc2_size, file);
+
+    // Write FC3 weights and biases
+    fwrite(h_w_fc3, sizeof(float), fc3_w_size, file);
+    fwrite(h_b_fc3, sizeof(float), num_classes, file);
+
+    fclose(file);
+    fprintf(stdout, "Successfully saved checkpoint with %d total parameters\n",
+            conv1_w_size + c1_filters + conv2_w_size + c2_filters +
+            fc1_w_size + fc1_size + fc2_w_size + fc2_size +
+            fc3_w_size + num_classes);
 }
