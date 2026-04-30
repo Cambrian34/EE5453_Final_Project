@@ -756,6 +756,30 @@ int main()
     cudaFree(m_b_fc3);
     cudaFree(v_b_fc3);
 
+    // === SYNC TRAINED WEIGHTS FROM GPU TO HOST BEFORE SAVING ===
+    fprintf(stdout, "\nSyncing trained weights from GPU to Host...\n");
+    fprintf(output_file, "\nSyncing trained weights from GPU to Host...\n");
+
+    // Conv1
+    cudaCheck(cudaMemcpy(h_w_c1, d_w_c1, conv1_w_size * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaCheck(cudaMemcpy(h_b_c1, d_b_c1, C1_FILTERS * sizeof(float), cudaMemcpyDeviceToHost));
+
+    // Conv2
+    cudaCheck(cudaMemcpy(h_w_c2, d_w_c2, conv2_w_size * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaCheck(cudaMemcpy(h_b_c2, d_b_c2, C2_FILTERS * sizeof(float), cudaMemcpyDeviceToHost));
+
+    // FC1
+    cudaCheck(cudaMemcpy(h_w_fc1, d_w_fc1, fc1_w_size * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaCheck(cudaMemcpy(h_b_fc1, d_b_fc1, FC1_OUT * sizeof(float), cudaMemcpyDeviceToHost));
+
+    // FC2
+    cudaCheck(cudaMemcpy(h_w_fc2, d_w_fc2, fc2_w_size * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaCheck(cudaMemcpy(h_b_fc2, d_b_fc2, FC2_OUT * sizeof(float), cudaMemcpyDeviceToHost));
+
+    // FC3
+    cudaCheck(cudaMemcpy(h_w_fc3, d_w_fc3, fc3_w_size * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaCheck(cudaMemcpy(h_b_fc3, d_b_fc3, NUM_CLASSES * sizeof(float), cudaMemcpyDeviceToHost));
+
     // Save trained weights to binary checkpoint before cleanup
     fprintf(stdout, "\nSaving trained weights to checkpoint file...\n");
     fprintf(output_file, "\nSaving trained weights to checkpoint file...\n");

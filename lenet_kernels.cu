@@ -2,9 +2,10 @@
 #include "lenet_kernels.h"
 
 // BONUS: Optimized Conv1 Forward using Shared Memory caching for inputs
-__global__ void conv1_forward_kernel(float* input, float* weights, float* bias, float* output, 
-                                     int batch_size, int in_w, int in_h, int in_c, 
-                                     int out_w, int out_h, int num_filters, int filter_size) {
+__global__ void conv1_forward_kernel(float *input, float *weights, float *bias, float *output,
+                                     int batch_size, int in_w, int in_h, int in_c,
+                                     int out_w, int out_h, int num_filters, int filter_size)
+{
     int tx = threadIdx.x;
     int ty = threadIdx.y;
     int out_x = blockIdx.x * blockDim.x + tx;
@@ -12,7 +13,8 @@ __global__ void conv1_forward_kernel(float* input, float* weights, float* bias, 
     int f = blockIdx.z % num_filters;
     int b = blockIdx.z / num_filters;
 
-    if (b >= batch_size) return;
+    if (b >= batch_size)
+        return;
 
     // Shared memory for the input tile (all channels)
     extern __shared__ float s_input[];
@@ -27,28 +29,37 @@ __global__ void conv1_forward_kernel(float* input, float* weights, float* bias, 
     int base_y = blockIdx.y * blockDim.y;
 
     // Cooperative loading of input pixels into shared memory
-    for (int c = 0; c < in_c; c++) {
-        for (int i = linear_tid; i < total_elements_per_channel; i += total_threads) {
+    for (int c = 0; c < in_c; c++)
+    {
+        for (int i = linear_tid; i < total_elements_per_channel; i += total_threads)
+        {
             int sy = i / in_tile_w;
             int sx = i % in_tile_w;
             int ix = base_x + sx;
             int iy = base_y + sy;
 
             int s_idx = c * total_elements_per_channel + i;
-            if (ix >= 0 && ix < in_w && iy >= 0 && iy < in_h) {
+            if (ix >= 0 && ix < in_w && iy >= 0 && iy < in_h)
+            {
                 s_input[s_idx] = input[b * (in_c * in_h * in_w) + c * (in_h * in_w) + iy * in_w + ix];
-            } else {
+            }
+            else
+            {
                 s_input[s_idx] = 0.0f;
             }
         }
     }
     __syncthreads();
 
-    if (out_x < out_w && out_y < out_h) {
+    if (out_x < out_w && out_y < out_h)
+    {
         float val = 0.0f;
-        for (int c = 0; c < in_c; c++) {
-            for (int fy = 0; fy < filter_size; fy++) {
-                for (int fx = 0; fx < filter_size; fx++) {
+        for (int c = 0; c < in_c; c++)
+        {
+            for (int fy = 0; fy < filter_size; fy++)
+            {
+                for (int fx = 0; fx < filter_size; fx++)
+                {
                     int s_y = ty + fy;
                     int s_x = tx + fx;
                     val += s_input[c * total_elements_per_channel + s_y * in_tile_w + s_x] * weights[f * (in_c * filter_size * filter_size) + c * (filter_size * filter_size) + fy * filter_size + fx];
@@ -250,51 +261,51 @@ __global__ void adam_update_weights_kernel(float *weights, float *d_weights, flo
                                            int size, int out_nodes, float lr, float beta1, float beta2, float epsilon, int t, int batch_size)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    
+
     // Bias-correction terms
     float bias_correction1 = 1.0f - powf(beta1, (float)t);
     float bias_correction2 = 1.0f - powf(beta2, (float)t);
     float lr_corrected = lr * sqrtf(bias_correction2) / bias_correction1;
-    
+
     // Weight update with ADAM
     if (idx < size)
     {
         float grad = d_weights[idx] / (float)batch_size;
-        
+
         // Update biased first moment estimate (mean)
         m_weights[idx] = beta1 * m_weights[idx] + (1.0f - beta1) * grad;
-        
+
         // Update biased second moment estimate (variance)
         v_weights[idx] = beta2 * v_weights[idx] + (1.0f - beta2) * grad * grad;
-        
+
         // Bias-corrected first and second moment estimates
         float m_hat = m_weights[idx] / bias_correction1;
         float v_hat = v_weights[idx] / bias_correction2;
-        
+
         // Update weight
         weights[idx] -= lr * m_hat / (sqrtf(v_hat) + epsilon);
-        
+
         d_weights[idx] = 0.0f; // Reset for next batch
     }
-    
+
     // Bias update with ADAM
     if (idx < out_nodes)
     {
         float b_grad = d_bias[idx] / (float)batch_size;
-        
+
         // Update biased first moment estimate (mean)
         m_bias[idx] = beta1 * m_bias[idx] + (1.0f - beta1) * b_grad;
-        
+
         // Update biased second moment estimate (variance)
         v_bias[idx] = beta2 * v_bias[idx] + (1.0f - beta2) * b_grad * b_grad;
-        
+
         // Bias-corrected first and second moment estimates
         float m_hat = m_bias[idx] / bias_correction1;
         float v_hat = v_bias[idx] / bias_correction2;
-        
+
         // Update bias
         bias[idx] -= lr * m_hat / (sqrtf(v_hat) + epsilon);
-        
+
         d_bias[idx] = 0.0f;
     }
 }
