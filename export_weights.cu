@@ -45,8 +45,12 @@ int main() {
 
     // Read metadata header
     int magic, version;
-    fread(&magic, sizeof(int), 1, bin_file);
-    fread(&version, sizeof(int), 1, bin_file);
+    if (fread(&magic, sizeof(int), 1, bin_file) != 1 ||
+        fread(&version, sizeof(int), 1, bin_file) != 1) {
+        fprintf(stderr, "Error: Failed to read metadata header\n");
+        fclose(bin_file);
+        return 1;
+    }
 
     if (magic != 0x4C455435) {
         fprintf(stderr, "Error: Invalid checkpoint file (bad magic number)\n");
@@ -58,11 +62,15 @@ int main() {
 
     // Read layer dimensions
     int c1_filters, c2_filters, fc1_size, fc2_size, num_classes;
-    fread(&c1_filters, sizeof(int), 1, bin_file);
-    fread(&c2_filters, sizeof(int), 1, bin_file);
-    fread(&fc1_size, sizeof(int), 1, bin_file);
-    fread(&fc2_size, sizeof(int), 1, bin_file);
-    fread(&num_classes, sizeof(int), 1, bin_file);
+    if (fread(&c1_filters, sizeof(int), 1, bin_file) != 1 ||
+        fread(&c2_filters, sizeof(int), 1, bin_file) != 1 ||
+        fread(&fc1_size, sizeof(int), 1, bin_file) != 1 ||
+        fread(&fc2_size, sizeof(int), 1, bin_file) != 1 ||
+        fread(&num_classes, sizeof(int), 1, bin_file) != 1) {
+        fprintf(stderr, "Error: Failed to read layer dimensions\n");
+        fclose(bin_file);
+        return 1;
+    }
 
     printf("[*] Network architecture:\n");
     printf("    - Conv1: %d filters, 5x5 kernel, 3 input channels\n", c1_filters);
@@ -119,16 +127,20 @@ int main() {
 
     // Read weights from checkpoint
     printf("[*] Reading weights from checkpoint...\n");
-    fread(w_conv1, sizeof(float), conv1_w_size, bin_file);
-    fread(b_conv1, sizeof(float), c1_filters, bin_file);
-    fread(w_conv2, sizeof(float), conv2_w_size, bin_file);
-    fread(b_conv2, sizeof(float), c2_filters, bin_file);
-    fread(w_fc1, sizeof(float), fc1_w_size, bin_file);
-    fread(b_fc1, sizeof(float), fc1_size, bin_file);
-    fread(w_fc2, sizeof(float), fc2_w_size, bin_file);
-    fread(b_fc2, sizeof(float), fc2_size, bin_file);
-    fread(w_fc3, sizeof(float), fc3_w_size, bin_file);
-    fread(b_fc3, sizeof(float), num_classes, bin_file);
+    if (fread(w_conv1, sizeof(float), conv1_w_size, bin_file) != (size_t)conv1_w_size ||
+        fread(b_conv1, sizeof(float), c1_filters, bin_file) != (size_t)c1_filters ||
+        fread(w_conv2, sizeof(float), conv2_w_size, bin_file) != (size_t)conv2_w_size ||
+        fread(b_conv2, sizeof(float), c2_filters, bin_file) != (size_t)c2_filters ||
+        fread(w_fc1, sizeof(float), fc1_w_size, bin_file) != (size_t)fc1_w_size ||
+        fread(b_fc1, sizeof(float), fc1_size, bin_file) != (size_t)fc1_size ||
+        fread(w_fc2, sizeof(float), fc2_w_size, bin_file) != (size_t)fc2_w_size ||
+        fread(b_fc2, sizeof(float), fc2_size, bin_file) != (size_t)fc2_size ||
+        fread(w_fc3, sizeof(float), fc3_w_size, bin_file) != (size_t)fc3_w_size ||
+        fread(b_fc3, sizeof(float), num_classes, bin_file) != (size_t)num_classes) {
+        fprintf(stderr, "Error: Failed to read weights from checkpoint\n");
+        fclose(bin_file);
+        return 1;
+    }
     fclose(bin_file);
 
     // Open output header file
